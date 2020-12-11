@@ -1,137 +1,132 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_ml_vision/firebase_ml_vision.dart';
+import 'package:firebase_core/firebase_core.dart';
 
-void main() => runApp(MyApp());
+void main() {
+  runApp(MyApp());
+}
 
 class MyApp extends StatelessWidget {
+  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: true,
+      title: 'Flutter Demo',
       theme: ThemeData(
-        primaryColor: Colors.deepPurple,
-        primaryColorDark: Colors.deepPurple[700],
-        accentColor: Colors.pinkAccent,
+        primarySwatch: Colors.blue,
       ),
-      home: Home(),
+      home: MyHomePage(title: 'Flutter Demo Home Page'),
     );
   }
 }
 
-class Home extends StatefulWidget {
+class MyHomePage extends StatefulWidget {
+  MyHomePage({Key key, this.title}) : super(key: key);
+  final String title;
   @override
-  _HomeState createState() => _HomeState();
+  _MyHomePageState createState() => _MyHomePageState();
 }
 
-class _HomeState extends State<Home> {
-  File _file;
-  String _labels;
-  bool _result;
+class _MyHomePageState extends State<MyHomePage> {
+  File _imageFile;
+  List<Label> _scanResults;
 
-  void _openFilePicker() async {
-    var file = await ImagePicker.pickImage(source: ImageSource.gallery);
+  Future<void> _loadImage() async {
     setState(() {
-      _file = file;
+      _imageFile = null;
     });
-    _runMLKitOnDeviceImageLabeler();
+
+    final File imageFile =
+        await ImagePicker.pickImage(source: ImageSource.gallery);
+
+    if (imageFile != null) {
+      _scanImage(imageFile);
+    }
+
+    setState(() {
+      _imageFile = imageFile;
+    });
   }
 
-  void _runMLKitOnDeviceImageLabeler() async {
-    FirebaseVisionImage firebaseVisionImage =
-        FirebaseVisionImage.fromFile(_file);
-    ImageLabeler imageLabeler = FirebaseVision.instance.imageLabeler();
-    List<ImageLabel> imageLabels =
-        await imageLabeler.processImage(firebaseVisionImage);
-    String labels = imageLabels.map((imageLabel) => imageLabel.text).join(", ");
+  Future<void> _scanImage(File imageFile) async {
     setState(() {
-      _labels = labels;
-      if (_labels.contains("Food") ||
-          _labels.contains("Cuisine") ||
-          _labels.contains("Vegetable") ||
-          _labels.contains("Fruit") ||
-          _labels.contains("Fast food") ||
-          _labels.contains("Meal")) {
-        setState(() {
-          _result = true;
-        });
-      } else {
-        setState(() {
-          _result = false;
-        });
-      }
+      _scanResults = null;
     });
+
+    final FirebaseVisionImage visionImage =
+        FirebaseVisionImage.fromFile(imageFile);
+
+    FirebaseVisionDetector detector = FirebaseVision.instance.labelDetector();
+
+    final List<Label> results = await detector.detectInImage(visionImage);
+
+    setState(() {
+      _scanResults = results;
+    });
+  }
+
+  List<Widget> buildImage(BuildContext context) {
+    if (_imageFile == null) {
+      return <Widget>[
+        Text(
+          'Select your photo from Floating Action Button.',
+        ),
+      ];
+    } else {
+      String labelString = "";
+      if (_scanResults != null) {
+        for (Label label in _scanResults) {
+          labelString += 'Label: ${label.label}, '
+              'Confidence: ${label.confidence.toStringAsFixed(2)}\n';
+        }
+      }
+      return <Widget>[
+        new Image.file(_imageFile),
+        new Text(labelString),
+      ];
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          title: Text("See Food"),
-          actions: <Widget>[
-            _file != null
-                ? IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _file = null;
-                      });
-                    },
-                    icon: Icon(Icons.close),
-                  )
-                : IconButton(
-                    onPressed: () {
-                      _openFilePicker();
-                    },
-                    icon: Icon(Icons.attach_file),
-                  )
-          ],
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: buildImage(context),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _openFilePicker,
-          child: Icon(Icons.attach_file),
-        ),
-        body: _file == null
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Center(
-                    child: Text(
-                      "Click FAB to select an Image",
-                    ),
-                  ),
-                ],
-              )
-            : SingleChildScrollView(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    FutureBuilder(
-                      builder: (BuildContext buildContext,
-                              AsyncSnapshot<dynamic> snapshot) =>
-                          Container(
-                            width: double.infinity,
-                            color: _result ? Colors.green : Colors.red,
-                            padding: EdgeInsets.all(16.0),
-                            margin: EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
-                            child: Text(
-                              _result
-                                  ? "Yes! Image does contains food items.\n\n$_labels"
-                                  : "No! Image doesn't contain food items.\n\n$_labels",
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                    ),
-                    Container(
-                      margin: const EdgeInsets.all(12.0),
-                      child: FutureBuilder(
-                          builder: (BuildContext buildContext,
-                              AsyncSnapshot<dynamic> snapshot) =>
-                              Image.file(_file)),
-                    ),
-                  ],
-                ),
-              ));
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _loadImage,
+        tooltip: 'Load Image',
+        child: Icon(Icons.add),
+      ),
+    );
   }
+}
+
+class OriginalPainter extends CustomPainter {
+  final ui.Image image;
+  OriginalPainter(this.image);
+
+  @override
+  void paint(ui.Canvas canvas, Size size) {
+    final paint = Paint();
+    if (image != null) {
+      canvas.drawImage(image, Offset(0, 0), paint);
+    }
+    paint.color = Colors.red;
+    canvas.drawCircle(Offset(size.width / 2, size.height / 2), 50, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant OriginalPainter oldDelegate) => false;
 }
